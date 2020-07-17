@@ -2,7 +2,7 @@ from __future__ import print_function
 import numpy as np
 import pickle
 import time
-from utils import get_loss, get_random_batch, images2batches, init_uniform, relu, init_reduce
+from utils import get_loss, get_random_batch, images2batches, init_uniform, relu, init_reduce, relu_back
 
 
 BATCH_SIZE = 20
@@ -68,7 +68,7 @@ class EncDecNetLite():
 
         B_out = np.ones((BATCH_SIZE, 1)) @ self.b_out  # [20, 1] * [1, 225]
         a_out = (z_link + z_rec) @ self.w_out + B_out  # [20, 75] * [75, 225]
-        y = relu(a_out)
+        y = relu(a_out) # [20, 225]
 
         return y
 
@@ -98,6 +98,21 @@ class EncDecNetLite():
         # Please, add backpropagation pass here
         #
         return 0 # dw
+
+
+    def outLayerBackward(self, y, x, a_out, z_rec, z_link):
+
+        dLdy = (y - x) * 2 # [20,225] - [20,225]
+        dYda_out = relu_back(a_out) # [20,225]
+        dA_outdZ_reclink = self.w_out # [75,225]
+        dA_outdW_out = (z_rec + z_link) # [20,75]
+        dA_outdB_out = 1
+
+        dLdW_out = dLdy @ dYda_out.T @ dA_outdW_out #[20,225]@[225,20]@[20,75] -> [75,225]
+        dLdB_out = dLdy @ dYda_out
+        dLdZ_reclink = dLdy @ dYda_out @ dA_outdZ_reclink #[20,225]@[20,225]@[75,225]
+
+        return
 
 
     def apply_dw(self, dw):
@@ -132,6 +147,7 @@ print(f"The Vector Form  takes {time_vector} seconds")
 print(f"The Vector Form performs {time_scalar/time_vector} times faster the Scalar one")
 
 # Main cycle
+lossList = []
 for i in range(UPDATES_NUM):
     # Get random batch for Stochastic Gradient Descent
     X_batch_train = get_random_batch(batches_train, BATCH_SIZE)
@@ -141,6 +157,7 @@ for i in range(UPDATES_NUM):
 
     # Calculate sum squared loss
     loss = get_loss(Y_batch, X_batch_train)
+    lossList.append(loss)
 
     # Backward pass, calculate derivatives of loss w.r.t. weights
     dw = neural_network.backprop(some_args)

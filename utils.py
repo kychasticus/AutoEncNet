@@ -53,6 +53,15 @@ def relu(a):
     return np.maximum(0, a)
 
 
+def relu_back(a):
+    """Implements ReLU derivative on a matrix"""
+
+    a[a < 0] = 0
+    a[a >= 0] = 1
+
+    return a
+
+
 def get_random_batch(batches_train, batch_size):
     """Outputs random batch of batch_size"""
 
@@ -64,6 +73,6 @@ def get_random_batch(batches_train, batch_size):
 def get_loss(Y_batch, X_batch_train):
     """Claculates sum squared loss"""
 
-    loss =
+    loss = np.sum(np.power((Y_batch - X_batch_train), 2))
 
     return loss
