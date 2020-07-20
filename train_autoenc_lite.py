@@ -2,8 +2,8 @@ from __future__ import print_function
 import numpy as np
 import pickle
 import time
-from utils import get_loss, get_random_batch, images2batches, init_uniform, relu, init_reduce, relu_back
-
+from utils import get_loss, get_random_batch, images2batches, init_uniform, relu
+from utils import init_reduce, relu_back
 
 BATCH_SIZE = 20
 UPDATES_NUM = 1000
@@ -103,14 +103,14 @@ class EncDecNetLite():
     def outLayerBackward(self, y, x, a_out, z_rec, z_link):
 
         dLdy = (y - x) * 2 # [20,225] - [20,225]
-        dYda_out = relu_back(a_out) # [20,225]
-        dA_outdZ_reclink = self.w_out # [75,225]
-        dA_outdW_out = (z_rec + z_link) # [20,75]
+        dYda_out = np.diag(relu_back(a_out)) # [20,225]
+        dA_outdZ_reclink = self.w_out.T # [225,75]
+        dA_outdW_out = (z_rec + z_link).T # [75,20]???
         dA_outdB_out = 1
 
-        dLdW_out = dLdy @ dYda_out.T @ dA_outdW_out #[20,225]@[225,20]@[20,75] -> [75,225]
-        dLdB_out = dLdy @ dYda_out
-        dLdZ_reclink = dLdy @ dYda_out @ dA_outdZ_reclink #[20,225]@[20,225]@[75,225]
+        dLdW_out = dLdy @ dYda_out @ dA_outdW_out #[20,225]@[225,225]@ -> [75,225]???
+        dLdB_out = np.sum(dLdy @ dYda_out, axis=0) #[20,225]@[225,225]
+        dLdZ_reclink = dLdy @ dYda_out @ dA_outdZ_reclink #[20,225]@[225,225]@[225,75]
 
         return
 
@@ -126,41 +126,58 @@ class EncDecNetLite():
 images_train = pickle.load(open('images_train.pickle', 'rb'))
 # Convert images to batching-friendly format
 batches_train = images2batches(images_train)
+# Calculate the mean image
+mean_image = np.mean(batches_train, axis=0)
 
-# Create neural network
-neural_network = EncDecNetLite()
-# Initialize weights
-neural_network.init()
+
+
+
+# Create neural network for the timetest
+neural_network_timetest = EncDecNetLite()
+# Initialize weights for the timetest
+neural_network_timetest.init()
 
 # Measure the performance difference between Layer_in SCALAR and VECTOR
 X_time_test = get_random_batch(batches_train, BATCH_SIZE)
 
 start_time_vector = time.time()
-neural_network.inLayerForward(X_time_test)
+neural_network_timetest.inLayerForward(X_time_test)
 time_vector = time.time() - start_time_vector
 
 start_time_scalar = time.time()
-neural_network.inLayerForwardScalar(X_time_test)
+neural_network_timetest.inLayerForwardScalar(X_time_test)
 time_scalar = time.time() - start_time_scalar
 print(f"The Scalar Form  takes {time_scalar} seconds")
 print(f"The Vector Form  takes {time_vector} seconds")
 print(f"The Vector Form performs {time_scalar/time_vector} times faster the Scalar one")
 
+
+
+
+
+# Create neural network for training
+neural_network = EncDecNetLite()
+# Initialize weights for training
+neural_network.init()
+
 # Main cycle
-lossList = []
-for i in range(UPDATES_NUM):
+lossListTrain = []
+for i in range(min(1, UPDATES_NUM)):
     # Get random batch for Stochastic Gradient Descent
     X_batch_train = get_random_batch(batches_train, BATCH_SIZE)
+    X_demeaned = X_batch_train - np.ones((BATCH_SIZE,1)) @ mean_image.reshape((1,D))
 
     # Forward pass, calculate network''s outputs
-    Y_batch = neural_network.forward(X_batch_train)
+    Y_batch = neural_network.forward(X_demeaned)
 
     # Calculate sum squared loss
-    loss = get_loss(Y_batch, X_batch_train)
-    lossList.append(loss)
+    loss = get_loss(Y_batch, X_demeaned)
+    lossListTrain.append(loss)
+
+    print(f'Epoch {i}/{UPDATES_NUM}, Loss: {loss}')
 
     # Backward pass, calculate derivatives of loss w.r.t. weights
-    dw = neural_network.backprop(some_args)
+    dw = neural_network.backprop(i)
 
     # Correct neural network''s weights
     neural_network.apply_dw(dw)
