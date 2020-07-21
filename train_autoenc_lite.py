@@ -33,44 +33,44 @@ class EncDecNetLite():
 
     def forward(self, x):
 
-        z_in = self.inLayerForward(x)
-        z_rec = self.recLayerForward(z_in)
-        z_link = self.linkLayerForward(x)
-        y = self.outLayerForward(z_rec, z_link)
+        self.inLayerForward(x)
+        self.recLayerForward()
+        self.linkLayerForward(x)
+        self.outLayerForward()
 
-        return y
+        return self.y
 
     def inLayerForward(self, x):
 
         B_in = np.ones((BATCH_SIZE, 1)) @ self.b_in  # [20, 1] * [1, 75]
-        a_in = x @ self.w_in + B_in  # [20, 225] * [225, 75] + [20, 75]
-        z_in = relu(a_in)  # [20, 75]
+        self.a_in = x @ self.w_in + B_in  # [20, 225] * [225, 75] + [20, 75]
+        self.z_in = relu(self.a_in)  # [20, 75]
 
-        return z_in
+        return self.z_in
 
-    def recLayerForward(self, z_in):
+    def recLayerForward(self):
 
         B_rec = np.ones((BATCH_SIZE, 1)) @ self.b_rec  # [20, 1] * [1, 75]
-        a_rec = z_in @ self.w_rec + B_rec  # [20, 75] * [75, 75] + [20, 75]
-        z_rec = relu(a_rec)  # [20, 75]
+        self.a_rec = self.z_in @ self.w_rec + B_rec  # [20, 75] * [75, 75] + [20, 75]
+        self.z_rec = relu(self.a_rec)  # [20, 75]
 
-        return z_rec
+        #return self.z_rec
 
     def linkLayerForward(self, x):
 
-        x_red = x @ self.ReduceMatrix  # [20, 225] * [225, 75]
-        a_link = x_red @ self.w_link  # [20, 75] * [75, 75]
-        z_link = a_link  # [20, 75]
+        self.x_red = x @ self.ReduceMatrix  # [20, 225] * [225, 75]
+        self.a_link = self.x_red @ self.w_link  # [20, 75] * [75, 75]
+        self.z_link = self.a_link  # [20, 75]
 
-        return z_link
+        #return self.z_link
 
-    def outLayerForward(self, z_rec, z_link):
+    def outLayerForward(self):
 
         B_out = np.ones((BATCH_SIZE, 1)) @ self.b_out  # [20, 1] * [1, 225]
-        a_out = (z_link + z_rec) @ self.w_out + B_out  # [20, 75] * [75, 225]
-        y = relu(a_out) # [20, 225]
+        self.a_out = (self.z_link + self.z_rec) @ self.w_out + B_out  # [20, 75] * [75, 225]
+        self.y = relu(self.a_out) # [20, 225]
 
-        return y
+        #return self.y
 
     def inLayerForwardScalar(self, x):
 
@@ -93,33 +93,64 @@ class EncDecNetLite():
         return z_in
 
 
-    def backprop(self, some_args):
-        #
-        # Please, add backpropagation pass here
-        #
-        return 0 # dw
+    def backprop(self, x):
+
+        self.outLayerBackward(x)
+        self.linkLayerBackward()
+        self.recLayerBackward()
+        self.inLayerBackward(x)
+        self.apply_dw()
 
 
-    def outLayerBackward(self, y, x, a_out, z_rec, z_link):
+    def outLayerBackward(self, x):
 
-        dLdy = (y - x) * 2 # [20,225] - [20,225]
-        dYda_out = np.diag(relu_back(a_out)) # [20,225]
+        dLdy = (self.y - x) * 2 # [20,225] - [20,225]
+        dYda_out = np.diag(relu_back(self.a_out)) # [225,225] ?? it seems we apply wrong matrice
+        z = self.z_rec + self.z_link
         dA_outdZ_reclink = self.w_out.T # [225,75]
-        dA_outdW_out = (z_rec + z_link).T # [75,20]???
-        dA_outdB_out = 1
 
-        dLdW_out = dLdy @ dYda_out @ dA_outdW_out #[20,225]@[225,225]@ -> [75,225]???
-        dLdB_out = np.sum(dLdy @ dYda_out, axis=0) #[20,225]@[225,225]
-        dLdZ_reclink = dLdy @ dYda_out @ dA_outdZ_reclink #[20,225]@[225,225]@[225,75]
+        self.dLdB_out = np.sum(dLdy @ dYda_out, axis=0)  # [20,225]@[225,225] ->[1,225]
+        self.dLdZ_reclink = dLdy @ dYda_out @ dA_outdZ_reclink  # [20,225]@[225,225]@[225,75] ->[20,75]
 
-        return
+        matrix = np.zeros((1, 75*225))
+        for i in range(BATCH_SIZE):
+            matrix += dLdy[i] @ dYda_out @ np.tile(z[i], (225, 225))  # [1,225]@[225,225]@[225,75*225]
+        self.dL_dWout = matrix.reshape((225, 75)).T
 
 
-    def apply_dw(self, dw):
-        #
-        # Correct neural network''s weights
-        #
-        pass
+    def linkLayerBackward(self):
+
+        matrix = np.zeros((1, 75 * 75))
+        for i in range(BATCH_SIZE):
+            matrix += self.dLdZ_reclink[i] @ np.tile(self.x_red[i], (75, 75))  # [1,75]@[75,75*75]
+        self.dL_dWlink = matrix.reshape((75, 75)).T
+
+
+    def recLayerBackward(self):
+
+        dZrec_dArec = np.diag(relu_back(self.a_rec))  # [75,75]?? it seems we apply wrong matrice
+        dArec_dZin = self.w_rec.T  # [75,75]
+
+        self.dL_dZin = self.dLdZ_reclink @ dZrec_dArec @ dArec_dZin  # [20,75][75,75][75,75]
+
+    def inLayerBackward(self, x):
+        dZin_dAin = np.diag(relu_back(self.a_in))  # [75,75]?? it seems we apply wrong
+
+        self.dL_dBin = np.sum(self.dL_dZin @ dZin_dAin, axis=0)  # [20,75][75,75]
+
+        matrix = np.zeros((1, 225 * 75))
+        for i in range(BATCH_SIZE):
+            matrix += self.dL_dZin[i] @ dZin_dAin @ np.tile(x[i], (75, 75))  # [1,75]@[75,75]@[75,225*75]
+        self.dL_dWin = matrix.reshape((75, 225)).T
+
+
+    def apply_dw(self):
+
+        self.w_in -= LEARNING_RATE * self.dL_dWin  # [225,75]-[225,75]
+        self.b_in -= LEARNING_RATE * self.dL_dBin  # [1,75]-[1,75]
+        self.w_link -= LEARNING_RATE * self.dL_dWlink  # [75,75]-[75,75]
+        self.w_out -= LEARNING_RATE * self.dL_dWout  # [75,225]-[75,225]
+        self.b_out -= LEARNING_RATE * self.dLdB_out  # [1,225]-[1,225]
 
 
 # Load train data
