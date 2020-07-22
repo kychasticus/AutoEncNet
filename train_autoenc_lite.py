@@ -8,21 +8,21 @@ from utils import init_reduce, relu_back
 BATCH_SIZE = 20
 UPDATES_NUM = 1000
 IMG_SIZE = 15
-D = 225 # IMG_SIZE*IMG_SIZE
-P = 75 # D /// 3
-LEARNING_RATE = 0.001
+D = 225  # IMG_SIZE*IMG_SIZE
+P = 75  # D /// 3
+LEARNING_RATE = 0.0001
 
 
 class EncDecNetLite():
     def __init__(self):
         super(EncDecNetLite, self).__init__()
-        self.w_in = np.zeros((D, P)) # [225,75]
-        self.b_in = np.zeros((1, P)) # [1,75]
-        self.w_link = np.zeros((P, P)) # [75,75]
-        self.w_out = np.zeros((P, D)) # [75,225]
-        self.b_out = np.zeros((1, D)) # [1,225]
+        self.w_in = np.zeros((D, P))  # [225,75]
+        self.b_in = np.zeros((1, P))  # [1,75]
+        self.w_link = np.zeros((P, P))  # [75,75]
+        self.w_out = np.zeros((P, D))  # [75,225]
+        self.b_out = np.zeros((1, D))  # [1,225]
         self.w_rec = np.eye(P)        # [75,75]
-        self.b_rec = np.zeros((1, P)) # [1,75]
+        self.b_rec = np.zeros((1, P))  # [1,75]
         self.ReduceMatrix = np.zeros((D, P))
 
     def init(self):
@@ -114,18 +114,20 @@ class EncDecNetLite():
         self.dL_dBout = vectorB
         self.dL_dZreclink = np.multiply(dLdy, dYda_out) @ dA_outdZ_reclink  # ([20,225]*[20,225])@[225,75] ->[20,75]
 
-        matrixW = np.zeros((1, 75*225))
+        matrixW = np.zeros((75, 225))
         for i in range(BATCH_SIZE):
-            matrixW += dLdy[i] @ np.diag(dYda_out[i]) @ np.tile(z[i], (225, 225))  # [1,225]@[225,225]@[225,75*225]
-        self.dL_dWout = matrixW.reshape((225, 75)).T
+            # matrixW += dLdy[i] @ np.diag(dYda_out[i]) @ np.tile(z[i], (225, 225))  # [1,225]@[225,225]@[225,75*225]
+            matrixW += z[i].reshape((75, 1)) @ dLdy[i].reshape((1, 225)) @ np.diag(dYda_out[i])  # [75*1]@[1,225]@[225,225]
+        self.dL_dWout = matrixW
 
 
     def linkLayerBackward(self):
 
-        matrix = np.zeros((1, 75 * 75))
+        matrix = np.zeros((75, 75))
         for i in range(BATCH_SIZE):
-            matrix += self.dL_dZreclink[i] @ np.tile(self.x_red[i], (75, 75))  # [1,75]@[75,75*75]
-        self.dL_dWlink = matrix.reshape((75, 75)).T
+            # matrix += self.dL_dZreclink[i] @ np.tile(self.x_red[i], (75, 75))  # [1,75]@[75,75*75]
+            matrix += self.x_red[i].reshape((75, 1)) @ self.dL_dZreclink[i].reshape((1, 75))  # [75,1][1,75]
+        self.dL_dWlink = matrix
 
 
     def recLayerBackward(self):
@@ -138,24 +140,25 @@ class EncDecNetLite():
     def inLayerBackward(self, x):
         dZin_dAin = relu_back(self.a_in)  # [20,75]
 
-        vectorB = np.ones((1,75))
+        vectorB = np.ones((1, 75))
         for j in range(BATCH_SIZE):
             vectorB += self.dL_dZin[j] @ np.diag(dZin_dAin[j])  # [1,75]@[75,75]->[1,75]
         self.dL_dBin = vectorB
 
-        matrixW = np.zeros((1, 225 * 75))
+        matrixW = np.zeros((225, 75))
         for i in range(BATCH_SIZE):
-            matrixW += self.dL_dZin[i] @ np.diag(dZin_dAin[i]) @ np.tile(x[i], (75, 75))  # [1,75]@[75,75]@[75,225*75]
-        self.dL_dWin = matrixW.reshape((75, 225)).T  # [225,75]
+            # matrixW += self.dL_dZin[i] @ np.diag(dZin_dAin[i]) @ np.tile(x[i], (75, 75))  # [1,75]@[75,75]@[75,225*75]
+            matrixW += x[i].reshape((225, 1)) @ self.dL_dZin[i].reshape((1, 75)) @ np.diag(dZin_dAin[i])  # [225,1][1,75]@[75,75]
+        self.dL_dWin = matrixW
 
 
     def apply_dw(self):
 
-        self.w_in -= LEARNING_RATE * self.dL_dWin  # [225,75]-[225,75]
-        self.b_in -= LEARNING_RATE * self.dL_dBin  # [1,75]-[1,75]
-        self.w_link -= LEARNING_RATE * self.dL_dWlink  # [75,75]-[75,75]
-        self.w_out -= LEARNING_RATE * self.dL_dWout  # [75,225]-[75,225]
-        self.b_out -= LEARNING_RATE * self.dL_dBout  # [1,225]-[1,225]
+        self.w_in = self.w_in - LEARNING_RATE * self.dL_dWin  # [225,75]-[225,75]
+        self.b_in = self.b_in - LEARNING_RATE * self.dL_dBin  # [1,75]-[1,75]
+        self.w_link = self.w_link - LEARNING_RATE * self.dL_dWlink  # [75,75]-[75,75]
+        self.w_out = self.w_out - LEARNING_RATE * self.dL_dWout  # [75,225]-[75,225]
+        self.b_out = self.b_out - LEARNING_RATE * self.dL_dBout  # [1,225]-[1,225]
 
 
 # Load train data
@@ -199,10 +202,10 @@ neural_network.init()
 # Main cycle
 neural_start = time.time()
 lossListTrain = []
-for i in range(min(1, UPDATES_NUM)):
+for i in range(min(20, UPDATES_NUM)):
     # Get random batch for Stochastic Gradient Descent
     X_batch_train = get_random_batch(batches_train, BATCH_SIZE)
-    X_demeaned = X_batch_train - np.ones((BATCH_SIZE, 1)) @ mean_image.reshape((1,D))
+    X_demeaned = X_batch_train - np.ones((BATCH_SIZE, 1)) @ mean_image.reshape((1, D))
 
     # Forward pass, calculate network''s outputs
     Y_batch = neural_network.forward(X_demeaned)
