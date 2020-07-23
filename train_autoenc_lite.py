@@ -11,7 +11,7 @@ UPDATES_NUM = 1000
 IMG_SIZE = 15
 D = 225  # IMG_SIZE*IMG_SIZE
 P = 75  # D /// 3
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.00001
 
 
 class EncDecNetLite():
@@ -167,7 +167,8 @@ images_train = pickle.load(open('images_train.pickle', 'rb'))
 # Convert images to batching-friendly format
 batches_train = images2batches(images_train)
 # Calculate the mean image
-mean_image = np.mean(batches_train, axis=0)
+mean_image = np.mean(batches_train, axis=0).reshape((1, D))
+std_image = np.std(batches_train.reshape((1, batches_train.shape[0]*D)))
 
 
 
@@ -206,9 +207,8 @@ lossListTrain = []
 for i in range(UPDATES_NUM):
     # Get random batch for Stochastic Gradient Descent
     X_batch_train = get_random_batch(batches_train, BATCH_SIZE)
-    X_demeaned = X_batch_train - np.ones((BATCH_SIZE, 1)) @ mean_image.reshape((1, D))
-    std = (1/np.std(X_demeaned, axis=1).reshape(BATCH_SIZE,1)) @ np.ones((1, D))
-    X_scaled = np.multiply(X_demeaned, std)
+    X_demeaned = X_batch_train - np.ones((BATCH_SIZE, 1)) @ mean_image
+    X_scaled = X_demeaned / std_image
 
     # Forward pass, calculate network''s outputs
     Y_batch = neural_network.forward(X_scaled)
@@ -231,7 +231,7 @@ lossFigure = go.Figure()
 batchCoordinate = []
 for i in range(UPDATES_NUM):
     batchCoordinate.append(i)
-lossFigure.add_trace(go.Scatter(x=loss, y=batchCoordinate))
+lossFigure.add_trace(go.Scatter(x=lossListTrain, y=batchCoordinate))
 lossFigure.update_layout(title='Mean Squared Loss for each Epoch')
 lossFigure.show()
 
