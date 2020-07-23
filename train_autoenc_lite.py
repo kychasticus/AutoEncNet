@@ -2,7 +2,8 @@ from __future__ import print_function
 import numpy as np
 import pickle
 import time
-from utils import get_loss, get_random_batch, images2batches, init_uniform, relu
+import plotly.graph_objects as go
+from utils import get_loss, get_random_batch, images2batches, init_uniform, relu, imshow
 from utils import init_reduce, relu_back
 
 BATCH_SIZE = 20
@@ -10,7 +11,7 @@ UPDATES_NUM = 1000
 IMG_SIZE = 15
 D = 225  # IMG_SIZE*IMG_SIZE
 P = 75  # D /// 3
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.001
 
 
 class EncDecNetLite():
@@ -202,26 +203,52 @@ neural_network.init()
 # Main cycle
 neural_start = time.time()
 lossListTrain = []
-for i in range(min(20, UPDATES_NUM)):
+for i in range(UPDATES_NUM):
     # Get random batch for Stochastic Gradient Descent
     X_batch_train = get_random_batch(batches_train, BATCH_SIZE)
     X_demeaned = X_batch_train - np.ones((BATCH_SIZE, 1)) @ mean_image.reshape((1, D))
+    std = (1/np.std(X_demeaned, axis=1).reshape(BATCH_SIZE,1)) @ np.ones((1, D))
+    X_scaled = np.multiply(X_demeaned, std)
 
     # Forward pass, calculate network''s outputs
-    Y_batch = neural_network.forward(X_demeaned)
+    Y_batch = neural_network.forward(X_scaled)
 
     # Calculate sum squared loss
-    loss = get_loss(Y_batch, X_demeaned)
+    loss = get_loss(Y_batch, X_scaled)
     lossListTrain.append(loss)
 
     print(f'Epoch {i}/{UPDATES_NUM}, Loss: {loss}, TimeLapsed: {time.time() - neural_start}')
 
     # Backward pass, calculate derivatives of loss w.r.t. weights
-    dw = neural_network.backprop(X_demeaned)
+    dw = neural_network.backprop(X_scaled)
 
     # Correct neural network''s weights
     neural_network.apply_dw()
 
+
+# Loss Curve
+lossFigure = go.Figure()
+batchCoordinate = []
+for i in range(UPDATES_NUM):
+    batchCoordinate.append(i)
+lossFigure.add_trace(go.Scatter(x=loss, y=batchCoordinate))
+lossFigure.update_layout(title='Mean Squared Loss for each Epoch')
+lossFigure.show()
+
 #
 # Load images_test.pickle here, run the network on it and show results here
 #
+# Load train data
+images_test = pickle.load(open('images_test.pickle', 'rb'))
+# Convert images to batching-friendly format
+batches_test = images2batches(images_test)
+# Calculate the mean image
+mean_image_test = np.mean(batches_test, axis=0)
+batches_test_demeaned = batches_test - np.ones((batches_test.shape[0], 1)) @ mean_image.reshape((1, D))
+
+y_test_demeaned = neural_network.forward(batches_test_demeaned)
+y_test = y_test_demeaned + np.ones((batches_test.shape[0], 1)) @ mean_image.reshape((1, D))
+
+for k in range(20):
+    imshow(batches_test[k].reshape((IMG_SIZE, IMG_SIZE)))
+    imshow(y_test[k].reshape((IMG_SIZE, IMG_SIZE)))
