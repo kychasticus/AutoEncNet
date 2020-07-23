@@ -11,18 +11,18 @@ UPDATES_NUM = 1000
 IMG_SIZE = 15
 D = 225  # IMG_SIZE*IMG_SIZE
 P = 75  # D /// 3
-LEARNING_RATE = 0.00001
+LEARNING_RATE = 0.0001
 
 
 class EncDecNetLite():
     def __init__(self):
         super(EncDecNetLite, self).__init__()
         self.w_in = np.zeros((D, P))  # [225,75]
-        self.b_in = np.zeros((1, P))  # [1,75]
         self.w_link = np.zeros((P, P))  # [75,75]
         self.w_out = np.zeros((P, D))  # [75,225]
-        self.b_out = np.zeros((1, D))  # [1,225]
         self.w_rec = np.eye(P)        # [75,75]
+        self.b_in = np.zeros((1, P))  # [1,75]
+        self.b_out = np.zeros((1, D))  # [1,225]
         self.b_rec = np.zeros((1, P))  # [1,75]
         self.ReduceMatrix = np.zeros((D, P))
 
@@ -168,33 +168,7 @@ images_train = pickle.load(open('images_train.pickle', 'rb'))
 batches_train = images2batches(images_train)
 # Calculate the mean image
 mean_image = np.mean(batches_train, axis=0).reshape((1, D))
-std_image = np.std(batches_train.reshape((1, batches_train.shape[0]*D)))
-
-
-
-
-# Create neural network for the timetest
-neural_network_timetest = EncDecNetLite()
-# Initialize weights for the timetest
-neural_network_timetest.init()
-
-# Measure the performance difference between Layer_in SCALAR and VECTOR
-X_time_test = get_random_batch(batches_train, BATCH_SIZE)
-
-start_time_vector = time.time()
-neural_network_timetest.inLayerForward(X_time_test)
-time_vector = time.time() - start_time_vector
-
-start_time_scalar = time.time()
-neural_network_timetest.inLayerForwardScalar(X_time_test)
-time_scalar = time.time() - start_time_scalar
-print(f"The Scalar Form  takes {time_scalar} seconds")
-print(f"The Vector Form  takes {time_vector} seconds")
-print(f"The Vector Form performs {time_scalar/time_vector} times faster the Scalar one")
-
-
-
-
+# std_image = np.std(batches_train.reshape((1, batches_train.shape[0]*D)))
 
 # Create neural network for training
 neural_network = EncDecNetLite()
@@ -208,7 +182,7 @@ for i in range(UPDATES_NUM):
     # Get random batch for Stochastic Gradient Descent
     X_batch_train = get_random_batch(batches_train, BATCH_SIZE)
     X_demeaned = X_batch_train - np.ones((BATCH_SIZE, 1)) @ mean_image
-    X_scaled = X_demeaned / std_image
+    X_scaled = X_demeaned / 255
 
     # Forward pass, calculate network''s outputs
     Y_batch = neural_network.forward(X_scaled)
@@ -231,7 +205,7 @@ lossFigure = go.Figure()
 batchCoordinate = []
 for i in range(UPDATES_NUM):
     batchCoordinate.append(i)
-lossFigure.add_trace(go.Scatter(x=lossListTrain, y=batchCoordinate))
+lossFigure.add_trace(go.Scatter(x=batchCoordinate, y=lossListTrain))
 lossFigure.update_layout(title='Mean Squared Loss for each Epoch')
 lossFigure.show()
 
@@ -243,12 +217,14 @@ images_test = pickle.load(open('images_test.pickle', 'rb'))
 # Convert images to batching-friendly format
 batches_test = images2batches(images_test)
 # Calculate the mean image
-mean_image_test = np.mean(batches_test, axis=0)
-batches_test_demeaned = batches_test - np.ones((batches_test.shape[0], 1)) @ mean_image.reshape((1, D))
+#mean_image_test = np.mean(batches_test, axis=0)
+batches_test_demeaned = batches_test - np.ones((batches_test.shape[0], 1)) @ mean_image
+batches_test_scaled = batches_test_demeaned / 255
 
-y_test_demeaned = neural_network.forward(batches_test_demeaned)
-y_test = y_test_demeaned + np.ones((batches_test.shape[0], 1)) @ mean_image.reshape((1, D))
+y_test_demeaned = neural_network.forward(batches_test_scaled)
+y_test = (y_test_demeaned * 255) + (np.ones((batches_test.shape[0], 1)) @ mean_image)
 
-for k in range(20):
-    imshow(batches_test[k].reshape((IMG_SIZE, IMG_SIZE)))
-    imshow(y_test[k].reshape((IMG_SIZE, IMG_SIZE)))
+
+for l in range(BATCH_SIZE):
+    imshow(batches_test[l].reshape((IMG_SIZE, IMG_SIZE)))
+    imshow(y_test[l].reshape((IMG_SIZE, IMG_SIZE)))
